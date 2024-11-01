@@ -1,0 +1,176 @@
+---
+title: "Question 2 - Analysis"
+output: html_notebook
+---
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+# QUESTION 2 (using “field data.xlsx”)
+
+The first sheet of the data provided shows contact history for organizers working on a voter registration
+campaign. The second sheet shows the weekly goal by region for number of phone attempts. Using this,
+create a report for the campaign’s field director that summarizes each region’s progress towards hitting
+their weekly phone attempt goals and any recommendations you may have for them. Note: you may want
+to look at the progress of individual organizers. The report should be no more than 3 pages and may
+include charts/visualizations of your choosing.
+
+# Load packages
+```{r}
+# knitr: This package is used to embed R code in LaTeX, HTML, Markdown, and other formats for dynamic report generation.
+library(knitr)
+
+# tidyverse: This package is a collection of R packages designed for data science. It includes dplyr, tidyr, ggplot2, readr, purrr, tibble, stringr, and forcats.
+library(tidyverse)
+
+# readxl: This package makes it easy to read Excel files in R.
+library(readxl)
+
+# ggplot2: This package is part of the tidyverse and is used for data visualization. It implements the grammar of graphics, a coherent system for describing and building graphs.
+library(ggplot2)
+
+# extrafont: This package allows one to use additional fonts in plots created with ggplot2 and other R graphics functions, enabling customization of text appearance.
+library(extrafont)
+```
+
+## Summarize the number of phone attempts made by each region and week
+```{r}
+# Read in the data
+field_data <- read_xlsx("field data.xlsx", sheet = "Data") # "Data" sheet 
+phone_goals <- read_xlsx("field data.xlsx", sheet = "Phone Goals") # "Phone Goals" sheet
+
+# Filter for phone attempts
+phone_attempts <- field_data %>%
+  filter(ContactType == "Phone")
+
+# Summarize the number of phone attempts by region and week
+phone_attempts_summary <- phone_attempts %>%
+  group_by(Region, Week, ContactType) %>%
+  summarize(Attempts = n(), .groups = 'drop')
+
+# Join the summary with phone goals
+summary_with_goals <- phone_attempts_summary %>%
+  left_join(phone_goals, by = c("Region", "Week", "ContactType"))
+
+# Calculate progress towards goals
+summary_with_goals <- summary_with_goals %>%
+  mutate(Progress = Attempts / `Attempt Goal` * 100)
+
+# Convert Week and Region to a factor
+summary_with_goals$Week <- as.factor(summary_with_goals$Week)
+summary_with_goals$Region <- as.factor(summary_with_goals$Region)
+
+# View the summarized data
+print(summary_with_goals)
+
+# Save CSV of summary for tables
+write.csv(summary_with_goals, "Region Summary.csv")
+```
+### Create visualizations to show each region's overall progress
+```{r}
+# Define a color palette with distinct colors for each region
+region_colors <- c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b")
+
+overall_progress <- ggplot(summary_with_goals, aes(x = Week, y = Progress, color = Region, group = Region)) +
+  geom_line(size = 1) +
+  geom_hline(yintercept = 100, linetype = "dotted", color = "red") +
+  geom_point(size = 2.5) +
+  scale_color_manual(values = region_colors) +  # Apply the custom color palette
+  labs(title = "Overall Progress Towards Weekly Phone Attempt Goals by Region",
+       x = "Week",
+       y = "Progress (%)",
+       color = "Region") +
+  theme_minimal() +
+  theme(strip.text = element_text(size = 14, face = "bold"),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10),
+        axis.title = element_text(size = 12),
+        plot.title = element_text(size = 14, face = "bold"),
+        panel.grid = element_blank(),
+        panel.background = element_blank(),    # Remove background
+        plot.background = element_blank(),      # Remove plot background
+        legend.position = "right",
+        text = element_text(family = "Trebuchet MS"))
+
+print(overall_progress)
+
+ggsave("overall_progress.png", overall_progress, width = 10, height = 6, dpi = 300)
+```
+### Create visualizations to show each region's progress
+```{r}
+region_progress <- ggplot(summary_with_goals, aes(x = Week, y = Progress)) +
+  geom_bar(stat = "identity", aes(fill = ifelse(Progress >= 100, "Meeting Goal", "Not Meeting Goal"))) +
+  geom_hline(yintercept = 100, linetype = "dotted", color = "red") +
+  facet_wrap(~ Region) +
+  scale_fill_manual(values = c("Not Meeting Goal" = "red", "Meeting Goal" = "gray")) +
+  labs(title = "Progress Towards Weekly Phone Attempt Goals by Region",
+       x = "Week",
+       y = "Progress (%)",
+       fill = "Goal Status") +
+  theme_minimal() +
+  theme(strip.text = element_text(size = 14, face = "bold"),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10),
+        axis.title = element_text(size = 12),
+        plot.title = element_text(size = 16, face = "bold"),
+        panel.grid = element_blank(),          # Remove grid lines
+        panel.background = element_blank(),    # Remove background
+        plot.background = element_blank(),      # Remove plot background
+        text = element_text(family = "Trebuchet MS")
+        )
+
+print(region_progress)
+
+# Save the modified plot
+ggsave("region_progress.png", region_progress, width = 12, height = 8, dpi = 300)
+```
+## Summarize the number of phone attempts made by each organizer and week
+```{r}
+# Summarize the number of phone attempts by organizer, region, and week
+organizer_summary <- phone_attempts %>%
+  group_by(Organizer, Region, Week, ContactType) %>%
+  summarize(Attempts = n(), .groups = 'drop')
+
+# Join the summary with phone goals
+organizer_summary <- organizer_summary %>%
+  left_join(phone_goals, by = c("Region", "Week", "ContactType"))
+
+# Calculate progress towards goals for each organizer
+organizer_summary <- organizer_summary %>%
+  mutate(Progress = Attempts / `Attempt Goal` * 100)
+
+# Convert Week and Region to factors
+organizer_summary$Week <- as.factor(organizer_summary$Week)
+organizer_summary$Region <- as.factor(organizer_summary$Region)
+
+# View the summarized data
+print(organizer_summary)
+
+# Save CSV of summary for tables
+write.csv(organizer_summary, "Organizer Summary.csv")
+```
+### Create heatmap of towards goals by organizers
+```{r}
+organizer_progress <- ggplot(organizer_summary, aes(x = Week, y = reorder(Organizer, desc(Organizer)), fill = Progress)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "red", high = "green", na.value = "grey50") +
+  labs(title = "Progress Towards Weekly Phone Attempt Goals by Organizer",
+       x = "Week",
+       y = "Organizer ID",
+       fill = "Progress (%)") +
+  theme_minimal() +
+  theme(text = element_text(family = "Trebuchet MS"),
+        strip.text = element_text(size = 14, face = "bold"),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10),
+        axis.title = element_text(size = 12),
+        plot.title = element_text(size = 16, face = "bold"),
+        panel.grid = element_blank(),          # Remove grid lines
+        panel.background = element_blank(),    # Remove background
+        plot.background = element_blank(),      # Remove plot background
+  )
+
+print(organizer_progress)
+
+ggsave("organizer_progress.png", organizer_progress, width = 12, height = 6, dpi = 300)
+```
